@@ -121,7 +121,7 @@ workflows:
       - release_beta:
           filters:
             branches:
-              ignore: /^master$/
+              only: /^master$/
       - release_production:
           filters:
             branches:
