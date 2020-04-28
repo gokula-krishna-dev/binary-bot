@@ -1,7 +1,4 @@
 version: 2.1
-orbs:
-  k8s: circleci/kubernetes@0.7.0
-  s3: circleci/aws-s3@1.0.13
 commands:
   git_checkout_from_cache:
     description: "Git checkout and save cache"
@@ -51,84 +48,32 @@ commands:
     description: "Build"
     steps:
       - run:
-          name: "yarn build"
+          name: "Gulp build"
           command: node_modules/gulp/bin/gulp.js build-min
-  compress:
-    description: "Compress"
-    steps:
-      - run:
-          name: "Compress"
-          command: |
-            pushd www/
-            tar -cvf artifact.tar *
-            mv artifact.tar ${OLDPWD}/
-      - run:
-          name: "Tag commit id as artifact identifer"
-          command: echo "${CIRCLE_SHA1}" > artifact-info.txt
-  upload_artifact:
-    description: "upload artifact to s3"
-    steps:
-      - s3/copy:
-          from: artifact.tar
-          to: 's3://${CONTEXT_ARTIFACT_S3_BUCKET}/${CIRCLE_PROJECT_REPONAME}/'
-          aws-access-key-id: env_CONTEXT_ARTIFACT_S3_AWS_ACCESS_KEY_ID
-          aws-secret-access-key: env_CONTEXT_ARTIFACT_S3_AWS_SECRET_ACCESS_KEY
-          aws-region: env_CONTEXT_ARTIFACT_S3_AWS_REGION
-          arguments: '--metadata "{\"x-amz-artifact-id\": \"${CIRCLE_SHA1}\" }"'
-  upload_checksum:
-    description: "upload artifact commit id to s3"
-    steps:
-      - s3/copy:
-          from: artifact-info.txt
-          to: 's3://${CONTEXT_ARTIFACT_S3_BUCKET}/${CIRCLE_PROJECT_REPONAME}/'
-          aws-access-key-id: env_CONTEXT_ARTIFACT_S3_AWS_ACCESS_KEY_ID
-          aws-secret-access-key: env_CONTEXT_ARTIFACT_S3_AWS_SECRET_ACCESS_KEY
-          aws-region: env_CONTEXT_ARTIFACT_S3_AWS_REGION
-  docker:
-    description: "Build and Push image to docker hub"
-    parameters:
-      target:
-        type: string
-    steps:
-      - setup_remote_docker
-      - run:
-          name: Building docker image for << parameters.target >>
-          command: |
-            build_latest="latest"
-            [ "<< parameters.target >>" == "beta" ]  && build_latest="beta-latest"
-            docker build -t ${DOCKHUB_ORGANISATION}/binary-static-bot:${CIRCLE_TAG} -t ${DOCKHUB_ORGANISATION}/binary-static-bot:${build_latest} .
-      - run:
-          name: Pushing Image to docker hub
-          command: |
-            echo $DOCKERHUB_PASSWORD | docker login -u $DOCKERHUB_USERNAME --password-stdin
-            docker push ${DOCKHUB_ORGANISATION}/binary-static-bot
-  k8s_deploy:
+  deploy:
     description: "Deploy to k8s cluster"
     parameters:
       target:
         type: string
     steps:
-      - k8s/install-kubectl
+      - checkout
+      - attach_workspace:
+          at: www
       - run:
-          name: Deploying to k8s cluster for service binary-bot-beta
+          name: Install and configure dependencies
           command: |
-            for SERVER_ID in {1..5}
-            do
-              KUBE_SERVER_REF="KUBE_SERVER_$SERVER_ID"
-              SERVICEACCOUNT_TOKEN_REF="SERVICEACCOUNT_TOKEN_$SERVER_ID"
-              CA_CRT_REF="CA_CRT_$SERVER_ID"
-              if [ ! -z "${!KUBE_SERVER_REF}" ]
-              then
-                echo "Deploying to cluster $SERVER_ID"
-                CA_CRT="${!CA_CRT_REF}"
-                KUBE_SERVER="${!KUBE_SERVER_REF}"
-                SERVICEACCOUNT_TOKEN="${!SERVICEACCOUNT_TOKEN_REF}"
-                deployment_target="bot-binary-com"
-                [ "<< parameters.target >>" == "beta" ] && deployment_target="bot-beta-binary-com"
-                echo $CA_CRT | base64 --decode > ca.crt
-                kubectl --server=${KUBE_SERVER} --certificate-authority=ca.crt --token=$SERVICEACCOUNT_TOKEN set image deployment/${deployment_target} ${deployment_target}=${DOCKHUB_ORGANISATION}/binary-static-bot:${CIRCLE_TAG}
-              fi
-            done
+            npm install -g --silent gh-pages@2.0.1
+            git config user.email "ci-build@binary.com"
+            git config user.name "ci-build"
+      - run:
+          name: Deploy docs to gh-pages branch
+          command: gh-pages --dist www
+      - add_ssh_keys:
+          fingerprints:
+            - "05:63:10:5c:ac:4d:8a:83:14:36:ba:41:d8:6c:5a:52"
+      - run:
+          name: Deploying to GitHub
+          command: echo << parameters.target >>
 
   npm_test:
     description: Run test
@@ -154,10 +99,8 @@ jobs:
       - git_checkout_from_cache
       - npm_install
       - build
-      - docker:
-          target: "beta"
-      - k8s_deploy:
-          target: "beta"
+      - deploy:
+          target: "staging"
 
   release_production:
     docker:
@@ -166,12 +109,7 @@ jobs:
       - git_checkout_from_cache
       - npm_install
       - build
-      - compress
-      - upload_artifact  # uploading the built code to s3 to create a backup of key services separate from Kubernetes deployment
-      - upload_checksum  # uploading compressed artifact checksum to cross match artifact fingerprint before actual deployment
-      - docker:
-          target: "production"
-      - k8s_deploy:
+      - deploy:
           target: "production"
 
 workflows:
@@ -183,14 +121,10 @@ workflows:
       - release_beta:
           filters:
             branches:
-              ignore: /.*/
-            tags:
-              only: /^beta.*/
-          context: binary-frontend-artifact-upload
+              ignore: /^master$/
       - release_production:
           filters:
             branches:
               ignore: /.*/
             tags:
               only: /^production.*/
-          context: binary-frontend-artifact-upload
