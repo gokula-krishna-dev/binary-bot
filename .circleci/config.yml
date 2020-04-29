@@ -53,7 +53,7 @@ commands:
   deploy:
     description: "Deploy to k8s cluster"
     parameters:
-      target:
+      target_branch:
         type: string
     steps:
       - checkout
@@ -65,15 +65,12 @@ commands:
             sudo npm install -g gh-pages@2.0.1
             git config user.email "ci-build@binary.com"
             git config user.name "ci-build"
-      - run:
-          name: Deploy docs to gh-pages branch
-          command: gh-pages --dist www
       - add_ssh_keys:
           fingerprints:
             - "05:63:10:5c:ac:4d:8a:83:14:36:ba:41:d8:6c:5a:52"
       - run:
-          name: Deploying to GitHub
-          command: echo << parameters.target >>
+          name: Deploy docs to gh-pages branch
+          command: gh-pages --dist www --branch << parameters.target_branch >>
 
   npm_test:
     description: Run test
@@ -100,7 +97,7 @@ jobs:
       - npm_install
       - build
       - deploy:
-          target: "staging"
+          target_branch: "staging"
 
   release_production:
     docker:
@@ -110,7 +107,7 @@ jobs:
       - npm_install
       - build
       - deploy:
-          target: "production"
+          target_branch: "production"
 
 workflows:
   test:
