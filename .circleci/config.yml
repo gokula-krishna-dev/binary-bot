@@ -60,6 +60,9 @@ commands:
       - attach_workspace:
           at: www
       - run:
+          name: Tag build
+          command: date > www/version
+      - run:
           name: Install and configure dependencies
           command: |
             sudo npm install -g gh-pages@2.0.1
