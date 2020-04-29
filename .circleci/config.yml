@@ -67,7 +67,7 @@ commands:
             git config user.name "ci-build"
       - add_ssh_keys:
           fingerprints:
-            - "b0:13:2c:df:e9:13:b2:31:f7:0c:94:82:1a:d3:5b:67"
+            - "ce:02:94:61:5a:a4:fc:17:0f:c1:c3:27:54:2f:9f:23"
       - run:
           name: Deploy docs to gh-pages branch
           command: gh-pages --dist www --branch << parameters.target_branch >>
