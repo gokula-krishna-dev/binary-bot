@@ -61,7 +61,7 @@ commands:
           at: www
       - run:
           name: Tag build
-          command: date > www/version
+          command: echo "<< parameters.target_branch >> $(date)" > www/version
       - run:
           name: Install and configure dependencies
           command: |
